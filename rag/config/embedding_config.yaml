@@ -1,0 +1,5 @@
+model: all-MiniLM-L6-v2
+chunk_size: 800
+chunk_overlap: 100
+distance_metric: cosine
+persist_dir: ./data/vector_db

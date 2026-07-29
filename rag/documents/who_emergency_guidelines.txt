@@ -1,0 +1,39 @@
+# WHO Emergency Health Guidelines
+## Mass Casualty Incident (MCI) Response
+In disasters, the standard of care shifts to doing the greatest good for the greatest number.
+
+### Scene Safety and Command
+- Establish incident command within 5 minutes of arrival.
+- Identify and mark hazardous zones: Hot (danger), Warm (triage), Cold (treatment/transport).
+- Maintain communication logs. In mesh-degraded environments, use runners or visual signals.
+
+### Communicable Disease Control in Shelters
+Overcrowding in evacuation centers increases risk of respiratory and diarrheal outbreaks.
+
+1. Maintain 2-meter spacing between sleeping areas where possible.
+2. Ensure handwashing stations with soap or alcohol rub at all entry/exit points.
+3. Isolate individuals with fever, cough, or diarrhea in a separate ventilation zone.
+4. Report clusters of illness to the epidemiology cell within 2 hours.
+
+### Water, Sanitation, and Hygiene (WASH)
+Safe water is the highest priority after immediate life threats.
+
+- Minimum: 15 liters per person per day for drinking, cooking, and hygiene.
+- If source is questionable: boil for 1 minute, or add chlorine tablets (0.2-0.5 mg/L residual after 30 min).
+- Latrines: 1 per 50 people, located 30m from water sources, downhill.
+
+### Mental Health First Aid in Disasters
+Psychological distress is nearly universal in disaster survivors.
+
+1. Listen without forcing discussion.
+2. Provide accurate information about safety, resources, and next steps.
+3. Maintain normal routines where possible.
+4. Identify and refer individuals showing signs of acute stress disorder or dissociation.
+5. Protect dignity — privacy is scarce in shelters but essential for recovery.
+
+### Evacuation Priorities
+When ordered to evacuate, the following order should be observed:
+1. Hospitalized patients and those requiring life-support equipment.
+2. Populations in flood plains, landslide zones, or structurally compromised buildings.
+3. Special needs populations: elderly, disabled, pregnant women, infants.
+4. General population in phased waves to prevent transport gridlock.

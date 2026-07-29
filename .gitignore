@@ -1,0 +1,60 @@
+# ==============================================================================
+# ResilienceMesh Root .gitignore
+# ==============================================================================
+
+# Local Tooling & Downloaded SDKs
+/flutter/
+/jdk-*/
+/android-sdk/
+
+# Environment & System Caches
+/.android/
+/.cache/
+/.config/
+/.dart-tool/
+/.dartServer/
+/.flutter
+/.gradle/
+/.local/
+/.pub-cache/
+
+# Mobile App Build Outputs & Caches
+/mobile/build/
+/mobile/android/build/
+/mobile/android/.gradle/
+/mobile/android/.idea/
+/mobile/.dart_tool/
+/mobile/.flutter-plugins
+/mobile/.flutter-plugins-dependencies
+/mobile/.metadata
+/mobile/*.iml
+
+# Unused Non-Android Platform Templates
+/mobile/ios/
+/mobile/linux/
+/mobile/macos/
+/mobile/web/
+/mobile/windows/
+
+# IDE & Editor Files
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.DS_Store
+
+# Python & Backend Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+env/
+venv/
+backend/data/vector_db/
+backend/.env
+
+# OS & Environment Files
+.env
+*.log

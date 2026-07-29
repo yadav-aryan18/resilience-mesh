@@ -1,0 +1,17 @@
+name: record_linux
+description: Stub for linux record plugin during Android build
+version: 0.7.2
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  record_platform_interface: any
+
+flutter:
+  plugin:
+    platforms:
+      linux:
+        pluginClass: RecordLinux

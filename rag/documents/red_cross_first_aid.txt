@@ -1,0 +1,42 @@
+# Red Cross Emergency First-Aid Protocols
+## Severe Bleeding (Hemorrhage)
+Severe bleeding is a life-threatening emergency. The goal is to stop blood loss as quickly as possible.
+
+1. Apply direct pressure to the wound using a clean cloth, gauze, or your hand if nothing else is available.
+2. If bleeding continues, add more layers on top — do NOT remove soaked dressings.
+3. If direct pressure fails and the wound is on a limb, apply a tourniquet 2-3 inches above the wound, never over a joint.
+4. Note the time the tourniquet was applied. Do not loosen it.
+5. Keep the victim warm and lying down. Elevate the legs if no spinal injury is suspected.
+6. Call for emergency medical evacuation immediately.
+
+## Fracture Immobilization
+Fractures require stabilization to prevent further tissue damage and reduce pain.
+
+1. Do NOT attempt to straighten a deformed limb.
+2. Immobilize the joint above and below the fracture site.
+3. Use splints made from rigid materials (boards, rolled magazines, tree branches padded with cloth).
+4. Check circulation distal to the injury every 15 minutes.
+5. Apply cold packs to reduce swelling, wrapped in cloth to prevent frostbite.
+
+## Flood Response & Water Hazards
+Rising water creates multiple simultaneous hazards: drowning, electrocution, contamination, and structural collapse.
+
+1. Do NOT enter moving water deeper than ankle height.
+2. Avoid contact with downed power lines — water conducts electricity.
+3. Evacuate to highest available ground. Preferred targets: designated elevation points, reinforced buildings, or rooftops.
+4. If trapped, signal for rescue using bright cloth, mirrors, or whistles.
+5. After rescue, monitor for hypothermia even in warm climates — wet clothing accelerates heat loss.
+
+## Multiple Casualty Triage (START Method)
+When resources are limited, prioritize based on survivability.
+
+- RED (Immediate): Respiratory distress after airway opening, uncontrolled bleeding, shock.
+- YELLOW (Delayed): Fractures, burns <20% BSA, conscious but unable to walk.
+- GREEN (Minor): Walking wounded, minor lacerations.
+- BLACK (Deceased/Expectant): No respiration after airway opening, no pulse.
+
+## Burn Management
+1. Stop the burning process — remove from heat source.
+2. Cool burns with clean water for 10-20 minutes. Do NOT use ice.
+3. Cover with sterile non-stick dressing. Do NOT apply ointments to severe burns.
+4. For burns >20% body surface area, initiate fluid resuscitation and evacuate immediately.
