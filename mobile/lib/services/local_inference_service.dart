@@ -1,15 +1,20 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/triage_model.dart';
+import 'logger_service.dart';
+import 'zip_stream_packager.dart';
 
 /// On-device Gemma inference engine (Gemma 4 E2B/E4B or Gemma 2B Edge)
-/// Powered by Google MediaPipe GenAI LLM Inference API via flutter_gemma (0.12.6).
-/// Operates 100% offline in air-gapped disaster environments.
+/// Auto-detects TFL3 model binary headers and packages 2GB+ model files
+/// into valid MediaPipe .task Zip bundles on-device with zero-RAM streaming.
 class LocalInferenceService {
   bool _isModelLoaded = false;
   String? _modelPath;
   String _activeModelName = 'gemma-4-edge';
+  ModelFileType _detectedFileType = ModelFileType.task;
   String? _lastError;
 
   bool get isReady => _isModelLoaded;
@@ -17,59 +22,160 @@ class LocalInferenceService {
   String get activeModelName => _activeModelName;
   String? get lastError => _lastError;
 
-  /// Initialize and load the Gemma model binary (.bin / .task file) for flutter_gemma 0.12.6
+  Future<File?> _ensureTokenizerFile() async {
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final tokenizerFile = File('${docsDir.path}/tokenizer.model');
+      if (!await tokenizerFile.exists() || await tokenizerFile.length() < 1000000) {
+        logger.log('📦 Extracting Gemma tokenizer.model asset (4.1MB) to sandbox...');
+        final byteData = await rootBundle.load('assets/models/tokenizer.model');
+        final buffer = byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes);
+        await tokenizerFile.writeAsBytes(buffer, flush: true);
+        logger.log('✅ Gemma tokenizer.model extracted cleanly (${buffer.length} bytes)');
+      }
+      return tokenizerFile;
+    } catch (e) {
+      logger.log('⚠️ Could not load Gemma tokenizer asset: $e');
+      return null;
+    }
+  }
+
+  /// Initialize and verify the Gemma model binary (.bin / .task file)
   Future<bool> loadModel({String? customModelPath}) async {
     _lastError = null;
     try {
       if (customModelPath != null && customModelPath.isNotEmpty) {
+        logger.log('🔍 Model pick request: $customModelPath');
         final file = File(customModelPath);
         if (!await file.exists()) {
           _lastError = 'Model file not found at $customModelPath';
+          logger.log('❌ $_lastError');
           _isModelLoaded = false;
           return false;
         }
-        _modelPath = customModelPath;
-        _activeModelName = customModelPath.split('/').last;
-      }
 
-      // Initialize FlutterGemma 0.12.6 engine instance
-      final dynamic gemmaInstance = _getGemmaInstance();
-      if (gemmaInstance != null) {
-        try {
-          await gemmaInstance.init(
-            maxTokens: 512,
-            temperature: 0.2,
-            topK: 40,
-            randomSeed: 42,
-          );
-        } catch (_) {
-          try {
-            await gemmaInstance.init();
-          } catch (_) {}
+        final fileLength = await file.length();
+        final fileName = file.path.split('/').last;
+        _activeModelName = fileName;
+        logger.log('📄 Picked file size: $fileLength bytes ($fileName)');
+
+        if (fileLength == 0) {
+          _lastError = 'Picked model file is 0 bytes (empty file or un-downloaded cloud file)';
+          logger.log('❌ $_lastError');
+          _isModelLoaded = false;
+          return false;
         }
+
+        final docsDir = await getApplicationDocumentsDirectory();
+
+        // Read magic header bytes to auto-detect file format (Zip .task vs TFL3 LiteRT binary)
+        bool isZip = false;
+        bool isTfl3 = false;
+        try {
+          final stream = file.openRead(0, 16);
+          final firstBytes = await stream.first;
+          final hexHeader = firstBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+          logger.log('🔍 File magic header bytes: $hexHeader');
+
+          isZip = firstBytes.length >= 4 &&
+              firstBytes[0] == 0x50 &&
+              firstBytes[1] == 0x4B &&
+              firstBytes[2] == 0x03 &&
+              firstBytes[3] == 0x04;
+
+          isTfl3 = firstBytes.length >= 8 &&
+              firstBytes[4] == 0x54 &&
+              firstBytes[5] == 0x46 &&
+              firstBytes[6] == 0x4C &&
+              firstBytes[7] == 0x33;
+        } catch (hdrErr) {
+          logger.log('⚠️ Could not inspect file header bytes: $hdrErr');
+        }
+
+        String targetPath;
+        if (isTfl3) {
+          logger.log('✨ Header is TFL3 binary. Zero-RAM streaming into MediaPipe .task Zip bundle...');
+          final baseName = fileName.replaceAll('.task', '').replaceAll('.bin', '').replaceAll('.tflite', '');
+          targetPath = '${docsDir.path}/${baseName}_v5_tokenizer_bundled.task';
+          final targetFile = File(targetPath);
+
+          // Clean up legacy bundle files to reclaim storage space
+          try {
+            final oldV1 = File('${docsDir.path}/${baseName}_bundled.task');
+            if (await oldV1.exists()) await oldV1.delete();
+            final oldV2 = File('${docsDir.path}/${baseName}_v2_bundled.task');
+            if (await oldV2.exists()) await oldV2.delete();
+            final oldV3 = File('${docsDir.path}/${baseName}_v3_prefill_bundled.task');
+            if (await oldV3.exists()) await oldV3.delete();
+            final oldV4 = File('${docsDir.path}/${baseName}_v4_uppercase_bundled.task');
+            if (await oldV4.exists()) await oldV4.delete();
+          } catch (_) {}
+
+          final tokenizerFile = await _ensureTokenizerFile();
+
+          if (!await targetFile.exists() || await targetFile.length() < fileLength) {
+            final configJson = '{\n  "model_type": "GEMMA_IT"\n}\n';
+            final success = await ZipStreamPackager.createMediaPipeTaskBundle(
+              inputFile: file,
+              outputFile: targetFile,
+              tokenizerFile: tokenizerFile,
+              configJson: configJson,
+              logger: (msg) => logger.log(msg),
+            );
+
+            if (!success || !await targetFile.exists()) {
+              _lastError = 'Failed to create MediaPipe Zip bundle on disk';
+              logger.log('❌ $_lastError');
+              _isModelLoaded = false;
+              return false;
+            }
+          } else {
+            final bundleSize = await targetFile.length();
+            logger.log('ℹ️ MediaPipe Zip bundle already exists at $targetPath ($bundleSize bytes).');
+          }
+          _detectedFileType = ModelFileType.task;
+        } else {
+          targetPath = '${docsDir.path}/$fileName';
+          final sandboxFile = File(targetPath);
+          if (!await sandboxFile.exists() || await sandboxFile.length() != fileLength) {
+            logger.log('📦 Copying model to app sandbox: $targetPath ($fileLength bytes)...');
+            await file.copy(targetPath);
+            final copySize = await sandboxFile.length();
+            logger.log('✅ Model copied to sandbox successfully ($copySize bytes).');
+          } else {
+            logger.log('ℹ️ Sandbox copy already exists at $targetPath ($fileLength bytes).');
+          }
+          _detectedFileType = isZip ? ModelFileType.task : ModelFileType.binary;
+        }
+
+        _modelPath = targetPath;
+
+        // Initialize FlutterGemma and install model spec into FlutterGemma engine
+        try {
+          await FlutterGemma.initialize();
+          logger.log('FlutterGemma.initialize() completed.');
+
+          await FlutterGemma.installModel(
+            modelType: ModelType.gemmaIt,
+            fileType: _detectedFileType,
+          ).fromFile(_modelPath!).install();
+          logger.log('✅ FlutterGemma.installModel() installed spec cleanly (fileType=$_detectedFileType).');
+        } catch (e) {
+          logger.log('FlutterGemma.installModel notice: $e');
+        }
+
+        _isModelLoaded = true;
+        logger.log('🧠 On-Device Gemma model ready: $_activeModelName (path: $_modelPath, type: $_detectedFileType)');
+        return true;
       }
 
-      _isModelLoaded = true;
-      debugPrint('🧠 On-Device Gemma 0.12.6 model initialized successfully: $_activeModelName');
-      return true;
-    } catch (e) {
-      _lastError = e.toString();
-      debugPrint('⚠️ On-device Gemma initialization notice: $e. Using edge heuristic engine as fallback.');
       _isModelLoaded = false;
       return false;
-    }
-  }
-
-  /// Dynamic helper to resolve FlutterGemma instance safely across version variations
-  dynamic _getGemmaInstance() {
-    try {
-      return FlutterGemmaPlugin.instance;
-    } catch (_) {
-      try {
-        return (FlutterGemma as dynamic).instance;
-      } catch (_) {
-        return null;
-      }
+    } catch (e) {
+      _lastError = e.toString();
+      logger.log('⚠️ On-device Gemma initialization notice: $e');
+      _isModelLoaded = false;
+      return false;
     }
   }
 
@@ -80,9 +186,12 @@ class LocalInferenceService {
     required String textQuery,
   }) async {
     final stopwatch = Stopwatch()..start();
+    _lastError = null;
 
-    // Try executing real Gemma LLM if model is initialized
-    if (_isModelLoaded) {
+    logger.log('🚀 Starting infer() query: "$textQuery"');
+
+    // Try executing real Gemma LLM if model path is set
+    if (_isModelLoaded && _modelPath != null) {
       try {
         final prompt = _buildGemmaPrompt(
           textQuery: textQuery,
@@ -90,10 +199,11 @@ class LocalInferenceService {
           hasImage: imageBytes != null && imageBytes.isNotEmpty,
         );
 
-        final String? rawResponse = await _executeGemmaInference(prompt);
+        final String? rawResponse = await _executeGemmaInference(prompt, imageBytes: imageBytes);
         stopwatch.stop();
 
         if (rawResponse != null && rawResponse.trim().isNotEmpty) {
+          logger.log('🎉 Gemma inference completed successfully in ${stopwatch.elapsedMilliseconds} ms!');
           return TriageResult.fromRawLlmResponse(
             rawResponse,
             latencyMs: stopwatch.elapsedMilliseconds.toDouble(),
@@ -101,8 +211,11 @@ class LocalInferenceService {
           );
         }
       } catch (e) {
-        debugPrint('Gemma 0.12.6 LLM execution notice: $e. Falling back to edge classifier.');
+        _lastError = e.toString();
+        logger.log('❌ Gemma LLM execution exception: $e. Falling back to edge classifier.');
       }
+    } else {
+      logger.log('ℹ️ Model not loaded (_isModelLoaded=$_isModelLoaded, _modelPath=$_modelPath). Skipping LLM execution.');
     }
 
     // Fallback: Rule-based edge heuristic classifier
@@ -110,32 +223,129 @@ class LocalInferenceService {
     final urgency = _classifyUrgencyHeuristic(textQuery, audioTranscript);
     final steps = _generateHeuristicSteps(textQuery, urgency);
 
+    final summary = _lastError != null
+        ? '⚠️ Local Gemma Notice: $_lastError\n\nFallback Triage: ${_generateHeuristicSummary(textQuery, audioTranscript)}'
+        : _generateHeuristicSummary(textQuery, audioTranscript);
+
     return TriageResult.fromLocalJson({
       'urgency': urgency.name,
-      'summary': _generateHeuristicSummary(textQuery, audioTranscript),
+      'summary': summary,
       'steps': steps,
       'latency_ms': stopwatch.elapsedMilliseconds.toDouble(),
       'model': _isModelLoaded ? 'gemma-4-fallback' : 'edge-heuristic-rule-engine',
     });
   }
 
-  /// Helper to safely call getGemmaResponse / getResponse / getAsyncResponse in 0.12.6
-  Future<String?> _executeGemmaInference(String prompt) async {
-    final dynamic gemma = _getGemmaInstance();
-    if (gemma == null) return null;
+  /// Helper to execute native MediaPipe GenAI inference
+  Future<String?> _executeGemmaInference(String prompt, {Uint8List? imageBytes}) async {
+    if (_modelPath == null || _modelPath!.isEmpty) {
+      logger.log('❌ _executeGemmaInference aborted: _modelPath is null/empty');
+      return null;
+    }
 
+    // 1. Try Modern FlutterGemma API first
     try {
-      return await gemma.getGemmaResponse(prompt: prompt);
-    } catch (_) {
-      try {
-        return await gemma.getResponse(prompt: prompt);
-      } catch (_) {
-        try {
-          return await gemma.getAsyncResponse(prompt: prompt);
-        } catch (_) {
-          return null;
+      if (FlutterGemma.hasActiveModel()) {
+        logger.log('🧠 Executing inference via FlutterGemma.getActiveModel()...');
+        final model = await FlutterGemma.getActiveModel(
+          maxTokens: 512,
+          preferredBackend: PreferredBackend.gpu,
+        );
+        final session = await model.createSession(temperature: 0.2);
+        await session.addQueryChunk(Message.text(text: prompt));
+        final response = await session.getResponse();
+        await session.close();
+        await model.close();
+        if (response.trim().isNotEmpty) {
+          logger.log('✅ FlutterGemma getActiveModel (GPU) returned response (${response.length} chars)');
+          return response;
         }
       }
+    } catch (e) {
+      logger.log('⚠️ FlutterGemma getActiveModel GPU notice: $e. Trying CPU backend.');
+      try {
+        if (FlutterGemma.hasActiveModel()) {
+          final model = await FlutterGemma.getActiveModel(
+            maxTokens: 512,
+            preferredBackend: PreferredBackend.cpu,
+          );
+          final session = await model.createSession(temperature: 0.2);
+          await session.addQueryChunk(Message.text(text: prompt));
+          final response = await session.getResponse();
+          await session.close();
+          await model.close();
+          if (response.trim().isNotEmpty) {
+            logger.log('✅ FlutterGemma getActiveModel (CPU) returned response (${response.length} chars)');
+            return response;
+          }
+        }
+      } catch (cpuErr) {
+        logger.log('⚠️ FlutterGemma getActiveModel CPU notice: $cpuErr.');
+      }
+    }
+
+    // 2. Direct Pigeon PlatformService fallback
+    final platform = PlatformService();
+    bool modelCreated = false;
+    for (final backend in [PreferredBackend.gpu, PreferredBackend.cpu]) {
+      try {
+        logger.log('🧠 MediaPipe PlatformService createModel -> Backend: $backend | Path: $_modelPath');
+        await platform.createModel(
+          maxTokens: 512,
+          modelPath: _modelPath!,
+          loraRanks: const [4, 8, 16],
+          preferredBackend: backend,
+          maxNumImages: imageBytes != null ? 1 : null,
+        );
+        modelCreated = true;
+        logger.log('✅ MediaPipe PlatformService createModel succeeded on $backend');
+        break;
+      } catch (e) {
+        logger.log('⚠️ MediaPipe PlatformService createModel failed on backend $backend: $e');
+        if (e.toString().contains('interpreter != nullptr') || _activeModelName.toLowerCase().contains('-web')) {
+          _lastError = 'Model file "$_activeModelName" is compiled for Web/WebGPU (LiteRT-Web target). Native Android requires an Android target model (e.g. gemma-2b-it-gpu-int4.bin). Running Edge Triage Engine.';
+        } else {
+          _lastError = 'MediaPipe model creation ($backend) failed: $e';
+        }
+      }
+    }
+
+    if (!modelCreated) {
+      logger.log('❌ Could not create MediaPipe model on GPU or CPU. Error: $_lastError');
+      return null;
+    }
+
+    try {
+      logger.log('🧠 MediaPipe PlatformService createSession starting...');
+      await platform.createSession(
+        temperature: 0.2,
+        randomSeed: 42,
+        topK: 40,
+        enableVisionModality: imageBytes != null,
+      );
+
+      await platform.addQueryChunk(prompt);
+      if (imageBytes != null && imageBytes.isNotEmpty) {
+        await platform.addImage(imageBytes);
+      }
+
+      final response = await platform.generateResponse();
+      logger.log('✅ Real Gemma inference output received (${response.length} chars)');
+
+      try {
+        await platform.closeSession();
+        await platform.closeModel();
+      } catch (_) {}
+
+      return response;
+    } catch (e) {
+      logger.log('❌ Error during Gemma generation: $e');
+      _lastError = 'Gemma inference execution failed: $e';
+      try {
+        await platform.closeSession();
+        await platform.closeModel();
+      } catch (_) {}
+      return null;
     }
   }
 

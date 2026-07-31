@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/logger_service.dart';
 import '../services/local_inference_service.dart';
 import '../services/mesh_client_service.dart';
 import '../services/audio_service.dart';
@@ -39,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    logger.init();
     _initModel();
   }
 
@@ -200,6 +202,79 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _showDebugLogDumpModal() async {
+    final logText = await logger.getLogDump();
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0D1117),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    '📋 System Debug Log Dump',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.copy, color: Colors.cyanAccent, size: 20),
+                        tooltip: 'Copy to Clipboard',
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: logText));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Logs copied to clipboard!')),
+                          );
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                        tooltip: 'Clear Logs',
+                        onPressed: () async {
+                          await logger.clearLogs();
+                          Navigator.pop(context);
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const Divider(color: Colors.white24),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    logText.isEmpty ? 'No system log entries recorded yet.' : logText,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      color: Color(0xFF8B949E),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -246,6 +321,11 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ],
                           ),
+                        ),
+                        IconButton(
+                          onPressed: _showDebugLogDumpModal,
+                          icon: const Icon(Icons.terminal, color: Colors.amberAccent),
+                          tooltip: 'System Debug Log Dump',
                         ),
                         IconButton(
                           onPressed: _showHistoryModal,
