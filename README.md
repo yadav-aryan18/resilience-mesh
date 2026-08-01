@@ -11,10 +11,10 @@
 > **No build environment needed!** Precompiled release binaries are available for direct installation on Android devices.
 
 1. Go to **[GitHub Releases](https://github.com/yadav-aryan18/resilience-mesh/releases/latest)**.
-2. Download the latest release APK: `resiliencemesh-multimodal-v9.apk`.
+2. Download the latest release APK: `resiliencemesh-multimodal-v1.apk`.
 3. Install on your Android device (`Android 7.0+ / API 24+`):
    ```bash
-   adb install -r resiliencemesh-multimodal-v9.apk
+   adb install -r resiliencemesh-multimodal-v1.apk
    ```
 4. Optional: Download your preferred Gemma 4 LiteRT model file (`gemma-4-E2B-it.litertlm` ~2.58 GB) and load it into the app via the top setting banner.
 
@@ -24,10 +24,10 @@
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  TIER 1: MOBILE EDGE NODE (Offline — Standalone / Airplane Mode)            │
+│  TIER 1: MOBILE EDGE NODE (Offline — Standalone / Airplane Mode)             │
 │  ┌─────────────────┐      ┌──────────────────────────────────────────────┐   │
 │  │  Input Layer    │      │  Gemma 4 E2B (LiteRT-LM / OpenCL)            │   │
-│  │  • Camera Photo │  =>  │  • Native Multimodal (Text, Vision, Audio)  │   │
+│  │  • Camera Photo │  =>  │  • Native Multimodal (Text, Vision, Audio)   │   │
 │  │  • Voice Note   │      │  • Local Triage Engine (Offline)             │   │
 │  │  • Text Query   │      │  • Urgency: Red / Yellow / Green             │   │
 │  └─────────────────┘      └──────────────────────────────────────────────┘   │
@@ -42,7 +42,7 @@
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  TIER 2: LAPTOP COMMAND NODE (Portable Heavy Compute)                        │
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │  FastAPI (0.0.0.0:8000)  →  Ollama + Gemma 4 12B/26B/31B              │  │
+│  │  FastAPI (0.0.0.0:8000) → Ollama + Gemma 4 12B/26B A4B/31B             │  │
 │  │  • Local Vector RAG (ChromaDB + Red Cross / WHO manuals)               │  │
 │  │  • Step-by-Step Chain-of-Thought Reasoning                             │  │
 │  │  • Opportunistic Web Agent (OpenMeteo + DuckDuckGo when online)        │  │
