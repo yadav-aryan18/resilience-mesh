@@ -5,35 +5,50 @@
 
 ---
 
+## 📥 Quick Download & Installation
+
+> [!TIP]
+> **No build environment needed!** Precompiled release binaries are available for direct installation on Android devices.
+
+1. Go to **[GitHub Releases](https://github.com/yadav-aryan18/resilience-mesh/releases/latest)**.
+2. Download the latest release APK: `resiliencemesh-multimodal-v9.apk`.
+3. Install on your Android device (`Android 7.0+ / API 24+`):
+   ```bash
+   adb install -r resiliencemesh-multimodal-v9.apk
+   ```
+4. Optional: Download your preferred Gemma 4 LiteRT model file (`gemma-4-E2B-it.litertlm` ~2.58 GB) and load it into the app via the top setting banner.
+
+---
+
 ## 🏗️ Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  TIER 1: MOBILE EDGE NODE (Offline — Airplane Mode)                         │
-│  ┌─────────────────┐      ┌──────────────────────────────────────────────┐  │
-│  │  Input Layer    │      │  Gemma 4 E4B (LiteRT / WebGPU)               │  │
-│  │  • Camera       │  =>  │  • Native Multimodal Perception              │  │
-│  │  • Voice Note   │      │  • Local Triage Engine (<1s)                 │  │
-│  │  • Text Entry   │      │  • Urgency: Red / Yellow / Green             │  │
-│  └─────────────────┘      └──────────────────────────────────────────────┘  │
-│                              │                                              │
-│                              ▼                                              │
-│                    [ Expert Mode Toggle ]                                   │
-│                    OFF → Show local result                                  │
-│                    ON  → Serialize payload → Wi-Fi Direct                   │
-└──────────────────────────────┬──────────────────────────────────────────────┘
-                               │ HTTP POST (air-gapped)
+```text
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  TIER 1: MOBILE EDGE NODE (Offline — Standalone / Airplane Mode)            │
+│  ┌─────────────────┐      ┌──────────────────────────────────────────────┐   │
+│  │  Input Layer    │      │  Gemma 4 E2B (LiteRT-LM / OpenCL)            │   │
+│  │  • Camera Photo │  =>  │  • Native Multimodal (Text, Vision, Audio)  │   │
+│  │  • Voice Note   │      │  • Local Triage Engine (Offline)             │   │
+│  │  • Text Query   │      │  • Urgency: Red / Yellow / Green             │   │
+│  └─────────────────┘      └──────────────────────────────────────────────┘   │
+│                              │                                               │
+│                              ▼                                               │
+│                    [ Expert Mode Toggle ]                                    │
+│                    OFF → Execute local Gemma 4 E2B                           │
+│                    ON  → Serialize payload → Local Wi-Fi Mesh                │
+└──────────────────────────────┬───────────────────────────────────────────────┘
+                               │ HTTP POST (air-gapped local subnet)
                                ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  TIER 2: LAPTOP COMMAND NODE (Portable Heavy Compute)                       │
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  TIER 2: LAPTOP COMMAND NODE (Portable Heavy Compute)                        │
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │  FastAPI (0.0.0.0:8000)  →  Ollama + Gemma 4 12B/26B/31B/A4B          │  │
-│  │  • Local Vector RAG (ChromaDB + Red Cross / WHO manuals)              │  │
-│  │  • <|think|> Chain-of-Thought Reasoning                                │  │
-│  │  • Opportunistic Web Agent (if internet flickers on)                    │  │
-│  │  • 90% GPU Offload (AMD RX 6600M / ROCm / Vulkan)                     │  │
+│  │  FastAPI (0.0.0.0:8000)  →  Ollama + Gemma 4 12B/26B/31B              │  │
+│  │  • Local Vector RAG (ChromaDB + Red Cross / WHO manuals)               │  │
+│  │  • Step-by-Step Chain-of-Thought Reasoning                             │  │
+│  │  • Opportunistic Web Agent (OpenMeteo + DuckDuckGo when online)        │  │
+│  │  • GPU Offload (Vulkan / ROCm / CUDA)                                  │  │
 │  └────────────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
