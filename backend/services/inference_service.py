@@ -20,14 +20,14 @@ Your role is to analyze field reports (text, audio transcripts, images) and prod
 prioritized medical and logistical guidance grounded in Red Cross / WHO protocols.
 
 RULES:
-1. Use <|think|> tokens to reason step-by-step before answering.
-2. Always classify urgency: red (critical), yellow (urgent), green (stable).
-3. Output FIRST-AID STEPS as a numbered list.
-4. If flood / fire / structural hazard detected, include EVACUATION_TARGET.
-5. Cite which document sources you used.
-6. Be concise — field responders need actionable data fast.
+1. Always classify urgency: red (critical), yellow (urgent), green (stable).
+2. Output FIRST-AID STEPS as a numbered list.
+3. If flood / fire / structural hazard detected, include EVACUATION_TARGET.
+4. Cite which document sources you used.
+5. Be concise — field responders need actionable data fast.
+6. Provide your step-by-step reasoning inside the "reasoning_trace" field.
 
-Output JSON strictly matching the expected schema."""
+Output valid JSON strictly matching the expected schema."""
 
 
 class InferenceService:
@@ -91,9 +91,9 @@ class InferenceService:
                     user_msg,
                 ],
                 options={
-                    "num_ctx": 16384,
-                    "temperature": 0.3,
-                    "num_gpu": 99,  # 90% GPU offload
+                    "num_ctx": 4096,
+                    "temperature": 0.2,
+                    "num_predict": 1024,
                 },
                 format="json",
             )
@@ -161,20 +161,49 @@ class InferenceService:
             parts.append(web)
         parts.append("\n=== INSTRUCTION ===")
         parts.append(
-            "Think step-by-step inside <|think|> tags. Then output valid JSON with: "
-            "urgency_level, clinical_summary, first_aid_steps (list), evacuation_target (optional), "
-            "hazard_alerts (list), reasoning_trace (string), sources (list)."
+            "Return valid JSON with keys: "
+            "urgency_level ('red'|'yellow'|'green'), clinical_summary, first_aid_steps (list), "
+            "evacuation_target (optional string), hazard_alerts (list), reasoning_trace (string), sources (list)."
         )
         return "\n".join(parts)
 
     def _extract_json(self, text: str) -> dict:
         import json, re
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
+        # 1. Clean out thinking tags <|think|>...</|think|> or <think>...</think>
+        cleaned = re.sub(r"<(?:\|)?think(?:\|)?>.*?</(?:\|)?think(?:\|)?>", "", text, flags=re.DOTALL).strip()
+        
+        # 2. Try parsing cleaned text directly
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            pass
+
+        # 3. Find JSON block inside ```json ... ``` codeblocks
+        cb_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
+        if cb_match:
             try:
-                return json.loads(match.group())
+                return json.loads(cb_match.group(1))
             except Exception:
                 pass
+
+        # 4. Find all JSON objects using balanced brace patterns
+        matches = re.findall(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", cleaned, re.DOTALL)
+        for m in reversed(matches):
+            try:
+                d = json.loads(m)
+                if "urgency_level" in d or "clinical_summary" in d or "steps" in d or "first_aid_steps" in d:
+                    return d
+            except Exception:
+                pass
+
+        # 5. Greedy fallback on cleaned text
+        g_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if g_match:
+            try:
+                return json.loads(g_match.group())
+            except Exception:
+                pass
+
         return {
             "urgency_level": "yellow",
             "clinical_summary": "Unable to parse model output. Manual review required.",

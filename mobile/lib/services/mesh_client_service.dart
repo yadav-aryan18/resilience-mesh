@@ -9,7 +9,7 @@ import '../models/triage_model.dart';
 /// Uses local Wi-Fi Direct / hotspot (completely air-gapped)
 class MeshClientService {
   String _baseUrl = 'http://192.168.49.1:8000'; // Default hotspot gateway
-  final Duration _timeout = const Duration(seconds: 30);
+  final Duration _timeout = const Duration(minutes: 3);
 
   String get baseUrl => _baseUrl;
 
@@ -37,7 +37,7 @@ class MeshClientService {
 
   /// Automatically scan common local gateways and subnets for an active Command Node
   Future<String?> discoverLaptopNode() async {
-    final candidateIps = [
+    final candidateIps = <String>{
       '192.168.49.1',  // Wi-Fi Direct gateway
       '192.168.43.1',  // Mobile hotspot gateway
       '10.42.0.1',     // Linux NetworkManager AP
@@ -47,7 +47,26 @@ class MeshClientService {
       '10.0.2.2',      // Android Emulator host
       'localhost',     // Local loopback
       '127.0.0.1',
-    ];
+    };
+
+    // Dynamically discover active phone Wi-Fi network interface gateway subnets
+    try {
+      final interfaces = await NetworkInterface.list();
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+            final parts = addr.address.split('.');
+            if (parts.length == 4) {
+              candidateIps.add('${parts[0]}.${parts[1]}.${parts[2]}.1');
+              // Also add common client host ranges for hotspot subnets
+              for (final last in [2, 5, 10, 50, 100, 101, 137, 142, 150, 180, 200, 250]) {
+                candidateIps.add('${parts[0]}.${parts[1]}.${parts[2]}.$last');
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {}
 
     // First check current set IP
     if (await isLaptopReachable()) {

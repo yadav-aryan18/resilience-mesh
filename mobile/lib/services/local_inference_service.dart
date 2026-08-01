@@ -182,13 +182,14 @@ class LocalInferenceService {
   /// Perform on-device inference using Gemma LLM or fallback engine
   Future<TriageResult> infer({
     Uint8List? imageBytes,
+    String? audioPath,
     String? audioTranscript,
     required String textQuery,
   }) async {
     final stopwatch = Stopwatch()..start();
     _lastError = null;
 
-    logger.log('🚀 Starting infer() query: "$textQuery"');
+    logger.log('🚀 Starting infer() query: "$textQuery" (hasImage: ${imageBytes != null}, hasAudio: ${audioPath != null})');
 
     // Try executing real Gemma LLM if model path is set
     if (_isModelLoaded && _modelPath != null) {
@@ -197,9 +198,14 @@ class LocalInferenceService {
           textQuery: textQuery,
           audioTranscript: audioTranscript,
           hasImage: imageBytes != null && imageBytes.isNotEmpty,
+          hasAudio: audioPath != null && audioPath.isNotEmpty,
         );
 
-        final String? rawResponse = await _executeGemmaInference(prompt, imageBytes: imageBytes);
+        final String? rawResponse = await _executeGemmaInference(
+          prompt,
+          imageBytes: imageBytes,
+          audioPath: audioPath,
+        );
         stopwatch.stop();
 
         if (rawResponse != null && rawResponse.trim().isNotEmpty) {
@@ -237,37 +243,80 @@ class LocalInferenceService {
   }
 
   /// Helper to execute native MediaPipe GenAI inference
-  Future<String?> _executeGemmaInference(String prompt, {Uint8List? imageBytes}) async {
+  Future<String?> _executeGemmaInference(
+    String prompt, {
+    Uint8List? imageBytes,
+    String? audioPath,
+  }) async {
     if (_modelPath == null || _modelPath!.isEmpty) {
       logger.log('❌ _executeGemmaInference aborted: _modelPath is null/empty');
       return null;
     }
 
-    // 1. Try Modern FlutterGemma API first
-    try {
-      if (FlutterGemma.hasActiveModel()) {
-        logger.log('🧠 Executing inference via FlutterGemma.getActiveModel()...');
-        final model = await FlutterGemma.getActiveModel(
-          maxTokens: 512,
-          preferredBackend: PreferredBackend.gpu,
-        );
-        final session = await model.createSession(temperature: 0.2);
-        await session.addQueryChunk(Message.text(text: prompt));
-        final response = await session.getResponse();
-        await session.close();
-        await model.close();
-        if (response.trim().isNotEmpty) {
-          logger.log('✅ FlutterGemma getActiveModel (GPU) returned response (${response.length} chars)');
-          return response;
+    final platform = PlatformService();
+
+    Uint8List? audioBytes;
+    if (audioPath != null && audioPath.isNotEmpty) {
+      try {
+        final audioFile = File(audioPath);
+        if (await audioFile.exists()) {
+          audioBytes = await audioFile.readAsBytes();
+          logger.log('🎙️ Read ${audioBytes.length} bytes of audio from $audioPath');
+        }
+      } catch (audErr) {
+        logger.log('⚠️ Could not read audio bytes: $audErr');
+      }
+    }
+
+    // 1. Direct PlatformService Multimodal Pipeline (if photo or audio attached)
+    if ((imageBytes != null && imageBytes.isNotEmpty) || (audioBytes != null && audioBytes.isNotEmpty)) {
+      logger.log('🖼️/🎙️ Media attached. Invoking MediaPipe PlatformService Multimodal Pipeline...');
+      for (final backend in [PreferredBackend.gpu, PreferredBackend.cpu, PreferredBackend.npu]) {
+        try {
+          await platform.createModel(
+            maxTokens: 512,
+            modelPath: _modelPath!,
+            loraRanks: const [4, 8, 16],
+            preferredBackend: backend,
+            maxNumImages: imageBytes != null ? 1 : null,
+            supportAudio: audioBytes != null,
+          );
+          await platform.createSession(
+            temperature: 0.2,
+            randomSeed: 42,
+            topK: 40,
+            enableVisionModality: imageBytes != null,
+            enableAudioModality: audioBytes != null,
+          );
+          await platform.addQueryChunk(prompt);
+          if (imageBytes != null && imageBytes.isNotEmpty) {
+            await platform.addImage(imageBytes);
+          }
+          if (audioBytes != null && audioBytes.isNotEmpty) {
+            await platform.addAudio(audioBytes);
+          }
+          final response = await platform.generateResponse();
+          await platform.closeSession();
+          await platform.closeModel();
+          if (response.trim().isNotEmpty) {
+            logger.log('✅ MediaPipe Multimodal ($backend) response received (${response.length} chars)');
+            return response;
+          }
+        } catch (e) {
+          logger.log('ℹ️ PlatformService Multimodal ($backend) notice: $e');
         }
       }
-    } catch (e) {
-      logger.log('⚠️ FlutterGemma getActiveModel GPU notice: $e. Trying CPU backend.');
+    }
+
+    // 2. Standard LLM Prompt Execution
+    for (final backend in [PreferredBackend.gpu, PreferredBackend.cpu, PreferredBackend.npu]) {
       try {
         if (FlutterGemma.hasActiveModel()) {
+          logger.log('🧠 Executing LLM inference via FlutterGemma.getActiveModel ($backend)...');
           final model = await FlutterGemma.getActiveModel(
             maxTokens: 512,
-            preferredBackend: PreferredBackend.cpu,
+            preferredBackend: backend,
+            supportImage: false,
           );
           final session = await model.createSession(temperature: 0.2);
           await session.addQueryChunk(Message.text(text: prompt));
@@ -275,78 +324,43 @@ class LocalInferenceService {
           await session.close();
           await model.close();
           if (response.trim().isNotEmpty) {
-            logger.log('✅ FlutterGemma getActiveModel (CPU) returned response (${response.length} chars)');
+            logger.log('✅ FlutterGemma LLM ($backend) returned response (${response.length} chars)');
             return response;
           }
         }
-      } catch (cpuErr) {
-        logger.log('⚠️ FlutterGemma getActiveModel CPU notice: $cpuErr.');
+      } catch (err) {
+        logger.log('⚠️ FlutterGemma $backend notice: $err.');
       }
     }
 
-    // 2. Direct Pigeon PlatformService fallback
-    final platform = PlatformService();
-    bool modelCreated = false;
+    // 3. Direct PlatformService Standard Fallback
     for (final backend in [PreferredBackend.gpu, PreferredBackend.cpu]) {
       try {
-        logger.log('🧠 MediaPipe PlatformService createModel -> Backend: $backend | Path: $_modelPath');
         await platform.createModel(
           maxTokens: 512,
           modelPath: _modelPath!,
           loraRanks: const [4, 8, 16],
           preferredBackend: backend,
-          maxNumImages: imageBytes != null ? 1 : null,
         );
-        modelCreated = true;
-        logger.log('✅ MediaPipe PlatformService createModel succeeded on $backend');
-        break;
-      } catch (e) {
-        logger.log('⚠️ MediaPipe PlatformService createModel failed on backend $backend: $e');
-        if (e.toString().contains('interpreter != nullptr') || _activeModelName.toLowerCase().contains('-web')) {
-          _lastError = 'Model file "$_activeModelName" is compiled for Web/WebGPU (LiteRT-Web target). Native Android requires an Android target model (e.g. gemma-2b-it-gpu-int4.bin). Running Edge Triage Engine.';
-        } else {
-          _lastError = 'MediaPipe model creation ($backend) failed: $e';
+        await platform.createSession(
+          temperature: 0.2,
+          randomSeed: 42,
+          topK: 40,
+        );
+        await platform.addQueryChunk(prompt);
+        final response = await platform.generateResponse();
+        await platform.closeSession();
+        await platform.closeModel();
+        if (response.trim().isNotEmpty) {
+          logger.log('✅ PlatformService Fallback ($backend) response received (${response.length} chars)');
+          return response;
         }
+      } catch (e) {
+        logger.log('⚠️ PlatformService Fallback ($backend) notice: $e');
       }
     }
 
-    if (!modelCreated) {
-      logger.log('❌ Could not create MediaPipe model on GPU or CPU. Error: $_lastError');
-      return null;
-    }
-
-    try {
-      logger.log('🧠 MediaPipe PlatformService createSession starting...');
-      await platform.createSession(
-        temperature: 0.2,
-        randomSeed: 42,
-        topK: 40,
-        enableVisionModality: imageBytes != null,
-      );
-
-      await platform.addQueryChunk(prompt);
-      if (imageBytes != null && imageBytes.isNotEmpty) {
-        await platform.addImage(imageBytes);
-      }
-
-      final response = await platform.generateResponse();
-      logger.log('✅ Real Gemma inference output received (${response.length} chars)');
-
-      try {
-        await platform.closeSession();
-        await platform.closeModel();
-      } catch (_) {}
-
-      return response;
-    } catch (e) {
-      logger.log('❌ Error during Gemma generation: $e');
-      _lastError = 'Gemma inference execution failed: $e';
-      try {
-        await platform.closeSession();
-        await platform.closeModel();
-      } catch (_) {}
-      return null;
-    }
+    return null;
   }
 
   /// Construct structured prompt for Gemma instruction format
@@ -354,19 +368,30 @@ class LocalInferenceService {
     required String textQuery,
     String? audioTranscript,
     bool hasImage = false,
+    bool hasAudio = false,
   }) {
     final buffer = StringBuffer();
     buffer.writeln('<start_of_turn>user');
+    if (hasImage) {
+      buffer.write('<image>');
+    }
+    if (hasAudio) {
+      buffer.write('<audio>');
+    }
+    if (hasImage || hasAudio) {
+      buffer.writeln();
+    }
     buffer.writeln('You are ResilienceMesh Edge AI — an emergency first-aid triage system operating offline.');
     buffer.writeln('Analyze the field report and provide urgent medical / tactical instructions.');
     buffer.writeln();
     buffer.writeln('FIELD REPORT:');
-    buffer.writeln('- Text Query: $textQuery');
-    if (audioTranscript != null && audioTranscript.isNotEmpty) {
-      buffer.writeln('- Audio Transcript: $audioTranscript');
+    if (textQuery.isNotEmpty) {
+      buffer.writeln('- Text Query: $textQuery');
     }
-    if (hasImage) {
-      buffer.writeln('- Injury Photo Attached: Yes');
+    if (audioTranscript != null &&
+        audioTranscript.isNotEmpty &&
+        !audioTranscript.contains('[Field Voice Recording Attached]')) {
+      buffer.writeln('- Spoken Transcript: $audioTranscript');
     }
     buffer.writeln();
     buffer.writeln('Return JSON with:');

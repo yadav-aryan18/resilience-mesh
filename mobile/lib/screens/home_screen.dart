@@ -693,7 +693,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _submitTriage() async {
-    if (_textController.text.trim().isEmpty) return;
+    final text = _textController.text.trim();
+    if (text.isEmpty && _capturedImageBase64 == null && _audioPath == null) return;
+
+    final effectiveQuery = text.isNotEmpty
+        ? text
+        : (_capturedImageBase64 != null
+            ? 'Analyze this field image and provide emergency triage instructions.'
+            : 'Listen to this field voice recording and provide emergency triage instructions.');
 
     setState(() => _isProcessing = true);
     HapticFeedback.heavyImpact();
@@ -719,7 +726,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final payload = FieldPayload(
           imageBase64: _capturedImageBase64,
           audioTranscript: _audioPath != null ? await _audioService.transcribe(_audioPath!) : null,
-          textQuery: _textController.text.trim(),
+          textQuery: effectiveQuery,
           sectorId: _sectorController.text.trim().isEmpty ? null : _sectorController.text.trim(),
           timestamp: DateTime.now(),
         );
@@ -728,8 +735,9 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         result = await _localInference.infer(
           imageBytes: _capturedImageBase64 != null ? base64Decode(_capturedImageBase64!) : null,
+          audioPath: _audioPath,
           audioTranscript: _audioPath != null ? await _audioService.transcribe(_audioPath!) : null,
-          textQuery: _textController.text.trim(),
+          textQuery: effectiveQuery,
         );
       }
 
@@ -737,6 +745,11 @@ class _HomeScreenState extends State<HomeScreen> {
       await _historyService.saveResult(result);
 
       if (mounted) {
+        setState(() {
+          _capturedImageBase64 = null;
+          _audioPath = null;
+        });
+
         Navigator.push(
           context,
           MaterialPageRoute(

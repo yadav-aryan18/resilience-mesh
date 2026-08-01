@@ -4,7 +4,7 @@ uvicorn[standard]==0.30.0
 python-multipart==0.0.9
 
 # Data Validation & Settings
-pydantic==2.7.4
+pydantic>=2.9.0
 pydantic-settings==2.3.4
 python-dotenv==1.0.1
 
@@ -21,7 +21,7 @@ ollama==0.2.1
 # File & Image Processing
 aiofiles==23.2.1
 numpy==1.26.4
-pillow==10.3.0
+pillow>=10.4.0
 
 # Test Suite
 pytest==8.2.2

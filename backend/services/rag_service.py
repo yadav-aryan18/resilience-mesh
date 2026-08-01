@@ -22,10 +22,11 @@ class RAGService:
     EMBED_MODEL = "all-MiniLM-L6-v2"  # ~80MB, runs on CPU fine
 
     def __init__(self):
+        settings = Settings(anonymized_telemetry=False)
         try:
-            self.client = chromadb.PersistentClient(path=DATA_DIR)
+            self.client = chromadb.PersistentClient(path=DATA_DIR, settings=settings)
         except Exception:
-            self.client = chromadb.Client()
+            self.client = chromadb.Client(settings=settings)
         self.embedder = SentenceTransformer(self.EMBED_MODEL)
         self.collection = self._get_or_create_collection()
         self._ensure_indexed()
