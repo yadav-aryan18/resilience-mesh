@@ -11,10 +11,10 @@
 > **No build environment required!** Precompiled release binaries and one-click startup scripts are ready for deployment.
 
 ### 1. Android Mobile App (Tier 1 Edge Node)
-* Download the precompiled APK: **[resiliencemesh-multimodal-v9.apk](https://github.com/yadav-aryan18/resilience-mesh/releases/latest)** (`254.2 MB`).
+* Download the precompiled APK: **[resiliencemesh-multimodal-v1.apk](https://github.com/yadav-aryan18/resilience-mesh/releases/latest)** (`254.2 MB`).
 * Install on any Android device running Android 7.0+ (API Level 24+):
   ```bash
-  adb install -r resiliencemesh-multimodal-v9.apk
+  adb install -r resiliencemesh-multimodal-v1.apk
   ```
 
 ### 2. Laptop Command Node (Tier 2 Heavy Compute)
@@ -233,4 +233,4 @@ flutter analyze
 
 ## 📜 License
 
-MIT License — free for open use by disaster response teams, emergency paramedics, and humanitarian organizations worldwide.
+[MIT License](file:///home/nightking/Downloads/resiliencemesh/LICENSE) — Copyright (c) 2026 Aryan Yadav. Free for open use by disaster response teams, emergency paramedics, and humanitarian organizations worldwide.
