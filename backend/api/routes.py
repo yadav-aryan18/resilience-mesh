@@ -68,7 +68,7 @@ async def expert_triage(
             query=triage_req.text_query,
         )
 
-    # Run expert inference with <|think|> reasoning + RAG
+    # Run expert inference with reasoning + RAG
     result = await inference.expert_triage(
         text_query=triage_req.text_query,
         audio_transcript=triage_req.audio_transcript,
@@ -77,4 +77,73 @@ async def expert_triage(
         web_context=web_context,
     )
 
+    # Record to activity store if available
+    if hasattr(request.app.state, "activity_store"):
+        request.app.state.activity_store.record_activity(
+            text_query=triage_req.text_query,
+            audio_transcript=triage_req.audio_transcript,
+            image_base64=image_base64,
+            sector_id=triage_req.sector_id,
+            urgency_level=result.urgency_level,
+            clinical_summary=result.clinical_summary,
+            first_aid_steps=result.first_aid_steps,
+            evacuation_target=result.evacuation_target,
+            hazard_alerts=result.hazard_alerts,
+            reasoning_trace=result.reasoning_trace,
+            sources=result.sources,
+            web_enhanced=result.web_enhanced,
+            latency_ms=result.latency_ms,
+        )
+
     return result
+
+
+@router.get("/activities")
+async def get_activities(
+    request: Request,
+    urgency: Optional[str] = None,
+    sector: Optional[str] = None,
+    limit: int = 50,
+):
+    """Retrieve recent field activities for dashboard."""
+    if hasattr(request.app.state, "activity_store"):
+        return request.app.state.activity_store.get_activities(
+            urgency=urgency, sector=sector, limit=limit
+        )
+    return []
+
+
+@router.get("/stats")
+async def get_stats(request: Request):
+    """Retrieve real-time command node summary metrics."""
+    if hasattr(request.app.state, "activity_store"):
+        return request.app.state.activity_store.get_stats()
+    return {
+        "total_requests": 0,
+        "recent_requests_count": 0,
+        "urgency_counts": {"red": 0, "yellow": 0, "green": 0},
+        "active_sectors": [],
+        "avg_latency_ms": 0.0,
+    }
+
+
+@router.get("/rag-docs")
+async def get_rag_docs(request: Request):
+    """Retrieve indexed document metadata from ChromaDB vector store."""
+    if hasattr(request.app.state, "rag") and request.app.state.rag.collection:
+        try:
+            col = request.app.state.rag.collection
+            count = col.count()
+            peek = col.peek(limit=20)
+            docs = []
+            if peek and "documents" in peek and peek["documents"]:
+                for i in range(len(peek["documents"])):
+                    docs.append({
+                        "id": peek["ids"][i] if "ids" in peek else f"doc_{i}",
+                        "source": peek["metadatas"][i].get("source", "Unknown") if "metadatas" in peek and peek["metadatas"] else "Unknown",
+                        "snippet": peek["documents"][i][:200] + "..." if len(peek["documents"][i]) > 200 else peek["documents"][i],
+                    })
+            return {"total_chunks": count, "sample_chunks": docs}
+        except Exception as e:
+            return {"total_chunks": 0, "sample_chunks": [], "error": str(e)}
+    return {"total_chunks": 0, "sample_chunks": []}

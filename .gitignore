@@ -29,12 +29,27 @@
 /mobile/.metadata
 /mobile/*.iml
 
+# Large Model Files & Binaries (Keep tokenizer.model)
+*.litertlm
+*.bin
+*.task
+*.tflite
+!mobile/assets/models/tokenizer.model
+
 # Unused Non-Android Platform Templates
 /mobile/ios/
 /mobile/linux/
 /mobile/macos/
 /mobile/web/
 /mobile/windows/
+
+# Node.js Dependencies & Caches (Keep dist/ for zero-dependency python execution)
+/backend/frontend/node_modules/
+/backend/frontend/.vite/
+/backend/frontend/npm-debug.log*
+/backend/frontend/yarn-debug.log*
+/backend/frontend/yarn-error.log*
+/backend/frontend/pnpm-debug.log*
 
 # IDE & Editor Files
 .idea/

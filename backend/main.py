@@ -1,17 +1,16 @@
-"""
-ResilienceMesh — Tier 2: Laptop Command Node
-FastAPI server for expert triage, local RAG, and opportunistic web agents.
-"""
-
+import os
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from api.routes import router
 from services.rag_service import RAGService
 from services.inference_service import InferenceService
+from services.activity_service import ActivityService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,8 +22,9 @@ logger = logging.getLogger("resiliencemesh")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🔧 Initializing ResilienceMesh Command Node...")
-    # Warm up vector DB and Ollama connection
+    # Warm up vector DB, activity ring buffer, and Ollama connection
     app.state.rag = RAGService()
+    app.state.activity_store = ActivityService()
     app.state.inference = InferenceService(rag_service=app.state.rag)
     logger.info("✅ Command Node ready. Listening on 0.0.0.0:8000")
     yield
@@ -48,10 +48,21 @@ app.add_middleware(
 
 app.include_router(router, prefix="/api")
 
+# Mount Vite compiled frontend static files if available
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+STATIC_FALLBACK = os.path.join(os.path.dirname(__file__), "static")
 
-@app.get("/")
-async def root():
-    return {"status": "ResilienceMesh Command Node Online"}
+if os.path.exists(FRONTEND_DIST):
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+elif os.path.exists(STATIC_FALLBACK):
+    app.mount("/", StaticFiles(directory=STATIC_FALLBACK, html=True), name="static")
+else:
+    @app.get("/")
+    async def root():
+        return {
+            "status": "ResilienceMesh Command Node Online",
+            "dashboard": "Frontend build not found. Run 'npm run build' inside backend/frontend/.",
+        }
 
 
 if __name__ == "__main__":
