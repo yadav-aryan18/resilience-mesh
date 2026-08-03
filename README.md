@@ -51,7 +51,7 @@ Start the entire laptop command stack (Ollama, Gemma 4, ChromaDB RAG, FastAPI, a
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  TIER 2: LAPTOP COMMAND NODE (Portable Heavy Compute)                        │
 │  ┌────────────────────────────────────────────────────────────────────────┐  │
-│  │  FastAPI (0.0.0.0:8000) → Ollama + Gemma 4 12B/26B/31B                │  │
+│  │  FastAPI (0.0.0.0:8000) → Ollama + Gemma 4 12B/26B A4B/31B             │  │
 │  │  • Local Vector RAG (ChromaDB + Red Cross / WHO manuals)               │  │
 │  │  • Step-by-Step Chain-of-Thought Reasoning                             │  │
 │  │  • Opportunistic Web Agent (OpenMeteo + DuckDuckGo when online)        │  │
